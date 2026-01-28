@@ -1,0 +1,160 @@
+{
+  "name": "grepai-skills",
+  "owner": {
+    "name": "Yoan Bernabeu",
+    "email": "contact@yoandev.co"
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "description": "AI agent skills for GrepAI - semantic code search and call graph analysis tool",
+    "license": "MIT",
+    "repository": "https://github.com/yoanbernabeu/grepai-skills",
+    "keywords": [
+      "grepai",
+      "semantic-search",
+      "code-search",
+      "embeddings",
+      "call-graphs",
+      "ai-agents",
+      "mcp",
+      "ollama",
+      "openai"
+    ]
+  },
+  "plugins": [
+    {
+      "name": "grepai-getting-started",
+      "description": "Essential skills for installing GrepAI and Ollama, and getting started quickly",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/getting-started/grepai-installation",
+        "./skills/getting-started/grepai-ollama-setup",
+        "./skills/getting-started/grepai-quickstart"
+      ]
+    },
+    {
+      "name": "grepai-configuration",
+      "description": "Skills for initializing projects and configuring GrepAI",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/configuration/grepai-init",
+        "./skills/configuration/grepai-config-reference",
+        "./skills/configuration/grepai-ignore-patterns"
+      ]
+    },
+    {
+      "name": "grepai-embeddings",
+      "description": "Skills for configuring embedding providers: Ollama, OpenAI, and LM Studio",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/embeddings/grepai-embeddings-ollama",
+        "./skills/embeddings/grepai-embeddings-openai",
+        "./skills/embeddings/grepai-embeddings-lmstudio"
+      ]
+    },
+    {
+      "name": "grepai-storage",
+      "description": "Skills for configuring storage backends: GOB, PostgreSQL, and Qdrant",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/storage/grepai-storage-gob",
+        "./skills/storage/grepai-storage-postgres",
+        "./skills/storage/grepai-storage-qdrant"
+      ]
+    },
+    {
+      "name": "grepai-indexing",
+      "description": "Skills for indexing codebases with the watch daemon and chunking configuration",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/indexing/grepai-watch-daemon",
+        "./skills/indexing/grepai-chunking"
+      ]
+    },
+    {
+      "name": "grepai-search",
+      "description": "Complete skills for semantic code search: basics, advanced options, tips, and boosting",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/search/grepai-search-basics",
+        "./skills/search/grepai-search-advanced",
+        "./skills/search/grepai-search-tips",
+        "./skills/search/grepai-search-boosting"
+      ]
+    },
+    {
+      "name": "grepai-trace",
+      "description": "Skills for call graph analysis: finding callers, callees, and building complete graphs",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/trace/grepai-trace-callers",
+        "./skills/trace/grepai-trace-callees",
+        "./skills/trace/grepai-trace-graph"
+      ]
+    },
+    {
+      "name": "grepai-integration",
+      "description": "Skills for integrating GrepAI with AI agents: Claude Code, Cursor, and MCP tools",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/integration/grepai-mcp-claude",
+        "./skills/integration/grepai-mcp-cursor",
+        "./skills/integration/grepai-mcp-tools"
+      ]
+    },
+    {
+      "name": "grepai-advanced",
+      "description": "Advanced skills: workspaces, supported languages, and troubleshooting",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/advanced/grepai-workspaces",
+        "./skills/advanced/grepai-languages",
+        "./skills/advanced/grepai-troubleshooting"
+      ]
+    },
+    {
+      "name": "grepai-complete",
+      "description": "Complete bundle of all 27 GrepAI skills for comprehensive code search mastery",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/getting-started/grepai-installation",
+        "./skills/getting-started/grepai-ollama-setup",
+        "./skills/getting-started/grepai-quickstart",
+        "./skills/configuration/grepai-init",
+        "./skills/configuration/grepai-config-reference",
+        "./skills/configuration/grepai-ignore-patterns",
+        "./skills/embeddings/grepai-embeddings-ollama",
+        "./skills/embeddings/grepai-embeddings-openai",
+        "./skills/embeddings/grepai-embeddings-lmstudio",
+        "./skills/storage/grepai-storage-gob",
+        "./skills/storage/grepai-storage-postgres",
+        "./skills/storage/grepai-storage-qdrant",
+        "./skills/indexing/grepai-watch-daemon",
+        "./skills/indexing/grepai-chunking",
+        "./skills/search/grepai-search-basics",
+        "./skills/search/grepai-search-advanced",
+        "./skills/search/grepai-search-tips",
+        "./skills/search/grepai-search-boosting",
+        "./skills/trace/grepai-trace-callers",
+        "./skills/trace/grepai-trace-callees",
+        "./skills/trace/grepai-trace-graph",
+        "./skills/integration/grepai-mcp-claude",
+        "./skills/integration/grepai-mcp-cursor",
+        "./skills/integration/grepai-mcp-tools",
+        "./skills/advanced/grepai-workspaces",
+        "./skills/advanced/grepai-languages",
+        "./skills/advanced/grepai-troubleshooting"
+      ]
+    }
+  ]
+}
