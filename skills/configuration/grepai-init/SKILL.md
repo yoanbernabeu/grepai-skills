@@ -55,24 +55,32 @@ watch:
   debounce_ms: 500
 
 trace:
-  mode: fast
   enabled_languages:
     - .go
     - .js
     - .ts
     - .jsx
     - .tsx
+    - .vue
     - .py
     - .php
+    - .lua
+    - .gd
+    - .rb
     - .c
     - .h
     - .cpp
     - .hpp
     - .cc
     - .cxx
+    - .hxx
     - .rs
     - .zig
     - .cs
+    - .java
+    - .fs
+    - .fsx
+    - .fsi
     - .pas
     - .dpr
 
@@ -135,7 +143,7 @@ Edit `.grepai/config.yaml` to customize:
 embedder:
   provider: openai
   model: text-embedding-3-small
-  api_key: ${OPENAI_API_KEY}
+  # no api_key: read from OPENAI_API_KEY (official endpoint only)
 ```
 
 ### Change Storage Backend

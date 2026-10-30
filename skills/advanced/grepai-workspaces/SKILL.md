@@ -18,120 +18,90 @@ This skill covers using GrepAI workspaces to manage multiple related projects wi
 
 Workspaces allow you to:
 - Group multiple projects together
-- Search across all projects at once
+- Index them into one shared vector store
+- Search or trace across all projects at once
 - Or search specific projects within the workspace
-- Share configuration across projects
+
+## Prerequisites
+
+Workspaces need a vector store that several projects can share:
+
+- **PostgreSQL** with pgvector
+- **Qdrant**
+
+The GOB backend is not supported: it is a local file per project, so it cannot be shared.
 
 ## Creating a Workspace
 
 ```bash
+# Interactive prompts (backend, then embedding provider)
 grepai workspace create my-workspace
+
+# Qdrant + Ollama, all defaults
+grepai workspace create my-workspace --yes
+
+# Qdrant + OpenAI (API key read from OPENAI_API_KEY, official endpoint)
+grepai workspace create my-workspace --backend qdrant --provider openai --model text-embedding-3-small
+
+# PostgreSQL + Ollama
+grepai workspace create my-workspace --backend postgres --dsn "postgres://grepai:grepai@localhost:5432/grepai"
+
+# From a YAML or JSON file (store + embedder)
+grepai workspace create my-workspace --from workspace-config.yaml
 ```
 
-Output:
-```
-✅ Workspace 'my-workspace' created
-   Location: ~/.grepai/workspaces/my-workspace/
-
-   Next: Add projects with 'grepai workspace add'
-```
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--backend` | `qdrant` or `postgres` | Required, unless `--yes` (then `qdrant`) |
+| `--provider` | `ollama`, `openai` or `lmstudio` | `ollama` |
+| `--model` | Embedding model | `text-embedding-3-small` for `openai`, `nomic-embed-text` otherwise |
+| `--endpoint` | Embedder endpoint | Provider default |
+| `--dsn` | PostgreSQL connection string | `postgres://localhost:5432/grepai` |
+| `--qdrant-endpoint` | Qdrant host | `http://localhost` |
+| `--qdrant-port` | Qdrant gRPC port | `6334` |
+| `--collection` | Qdrant collection name | `workspace_<name>` |
+| `--yes` | Use defaults for every value not set | |
+| `--from` | Read `store` and `embedder` from a file (other flags are ignored) | |
+| `--ui` | Interactive full-screen wizard | |
 
 ## Adding Projects
 
 ```bash
-# Add first project
 grepai workspace add my-workspace /path/to/frontend
-
-# Add more projects
 grepai workspace add my-workspace /path/to/backend
-grepai workspace add my-workspace /path/to/shared-lib
+grepai workspace add my-workspace ./shared-lib
 ```
 
-Output:
-```
-✅ Added '/path/to/frontend' to workspace 'my-workspace'
+Relative paths are converted to absolute paths. The project name is the directory name (`frontend`, `backend`) and must be unique in the workspace. A project does not need its own `grepai init`: without a `.grepai/config.yaml`, it uses default settings.
 
-   Projects in workspace:
-   1. frontend (/path/to/frontend)
-
-   Run 'grepai watch --workspace my-workspace' to index all projects.
-```
-
-## Listing Workspaces
+## Managing Workspaces
 
 ```bash
-grepai workspace list
+grepai workspace list                     # list workspaces
+grepai workspace show my-workspace        # projects and settings
+grepai workspace status my-workspace      # checks that each project path exists
+grepai workspace remove my-workspace frontend   # remove a project, by name (not path)
+grepai workspace delete my-workspace      # remove the workspace entry
 ```
 
-Output:
-```
-📁 Workspaces
-
-1. my-workspace
-   - Projects: 3
-   - Status: Not indexed
-
-2. work-projects
-   - Projects: 5
-   - Status: Indexed (updated 2h ago)
-```
-
-## Viewing Workspace Details
-
-```bash
-grepai workspace show my-workspace
-```
-
-Output:
-```
-📁 Workspace: my-workspace
-
-Projects:
-1. frontend
-   Path: /path/to/frontend
-   Files: 450
-   Last indexed: 2025-01-28 10:30
-
-2. backend
-   Path: /path/to/backend
-   Files: 320
-   Last indexed: 2025-01-28 10:30
-
-3. shared-lib
-   Path: /path/to/shared-lib
-   Files: 85
-   Last indexed: 2025-01-28 10:30
-
-Total: 855 files, 4,200 chunks
-```
+`workspace delete` only removes the entry from `workspace.yaml`: indexed data stays in PostgreSQL or Qdrant, and project files are untouched.
 
 ## Indexing a Workspace
 
 ```bash
-# Index all projects in workspace
+# Index, then keep watching (foreground)
 grepai watch --workspace my-workspace
-```
 
-Output:
-```
-🔍 Indexing workspace 'my-workspace'
-
-   [1/3] frontend...
-         Found 450 files, 2,100 chunks
-   [2/3] backend...
-         Found 320 files, 1,500 chunks
-   [3/3] shared-lib...
-         Found 85 files, 600 chunks
-
-   Total: 855 files, 4,200 chunks indexed
-   Watching for changes...
-```
-
-### Background Indexing
-
-```bash
+# Same, in the background
 grepai watch --workspace my-workspace --background
+grepai watch --workspace my-workspace --status
+grepai watch --workspace my-workspace --stop
+
+# Index once and exit (CI, git hooks)
+grepai index --workspace my-workspace
 ```
+
+Chunks go to the shared store. Each project's symbol index (and RPG graph, if enabled) is written to `<project>/.grepai/`. `grepai index --workspace` continues past a failing project and returns an aggregate error. A project folder that is missing is skipped with a warning.
 
 ## Searching Workspaces
 
@@ -141,108 +111,75 @@ grepai watch --workspace my-workspace --background
 grepai search --workspace my-workspace "user authentication"
 ```
 
-Results include project context:
-```
-Score: 0.89 | [backend] src/auth/middleware.go:15-45
-──────────────────────────────────────────
-func AuthMiddleware() ...
-
-Score: 0.85 | [frontend] src/hooks/useAuth.ts:10-30
-──────────────────────────────────────────
-export function useAuth() ...
-
-Score: 0.78 | [shared-lib] src/types/auth.ts:5-25
-──────────────────────────────────────────
-export interface AuthState ...
-```
-
-### Search Specific Project
+### Search Specific Projects
 
 ```bash
+# One project
 grepai search --workspace my-workspace --project frontend "form validation"
+
+# Several projects (repeat --project)
+grepai search --workspace my-workspace --project frontend --project backend "query"
+
+# Path prefix inside one project
+grepai search --workspace my-workspace --project frontend --path components/ "React hooks"
+
+# Path prefix without --project: start with the project name
+grepai search --workspace my-workspace --path frontend/src/ "query"
 ```
 
-Only searches the frontend project.
+With exactly one `--project`, a relative `--path` is relative to that project; otherwise it must start with a project name.
 
-## Workspace Status
-
-```bash
-grepai workspace status my-workspace
-```
-
-Output:
-```
-📊 Workspace Status: my-workspace
-
-Projects: 3
-Total files: 855
-Total chunks: 4,200
-Index size: 45 MB
-
-Per-project breakdown:
-┌─────────────┬───────┬────────┬──────────┐
-│ Project     │ Files │ Chunks │ Updated  │
-├─────────────┼───────┼────────┼──────────┤
-│ frontend    │ 450   │ 2,100  │ 2h ago   │
-│ backend     │ 320   │ 1,500  │ 2h ago   │
-│ shared-lib  │ 85    │ 600    │ 2h ago   │
-└─────────────┴───────┴────────┴──────────┘
-
-Daemon: Running (PID 12345)
-```
-
-## Removing Projects from Workspace
-
-```bash
-grepai workspace remove my-workspace /path/to/old-project
-```
-
-## Deleting a Workspace
-
-```bash
-grepai workspace delete my-workspace
-```
-
-This removes the workspace configuration but NOT the project files.
+Workspace search uses the default search boost and does not use hybrid search or RPG enrichment.
 
 ## Workspace Configuration
 
-Workspaces store config in `~/.grepai/workspaces/<name>/`:
-
-```
-~/.grepai/workspaces/my-workspace/
-├── workspace.yaml    # Workspace config
-├── index.gob         # Combined index
-└── symbols.gob       # Combined symbols
-```
-
-### workspace.yaml
+All workspaces are stored in a single file, `~/.grepai/workspace.yaml` (file mode `0600`, since it may hold API keys):
 
 ```yaml
-name: my-workspace
-created: 2025-01-28T10:00:00Z
-
-projects:
-  - name: frontend
-    path: /path/to/frontend
-  - name: backend
-    path: /path/to/backend
-  - name: shared-lib
-    path: /path/to/shared-lib
-
-# Optional: override global config per workspace
-embedder:
-  provider: ollama
-  model: nomic-embed-text
-
-ignore:
-  - node_modules
-  - dist
+version: 1
+workspaces:
+  my-workspace:
+    name: my-workspace
+    store:
+      backend: qdrant
+      qdrant:
+        endpoint: localhost
+        port: 6334
+    embedder:
+      provider: ollama
+      model: nomic-embed-text
+      endpoint: http://localhost:11434
+      dimensions: 768
+    chunking:
+      custom_extensions: [".tpl"]   # optional, merged with each project's list
+    projects:
+      - name: frontend
+        path: /path/to/frontend
+      - name: backend
+        path: /path/to/backend
 ```
+
+### API Keys With a Custom Endpoint
+
+Environment keys (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `SYNTHETIC_API_KEY`, `REQUESTY_API_KEY`) are only sent to the provider's official endpoint. A workspace embedder with a custom `endpoint` (Azure, LiteLLM, vLLM, a proxy…) needs `api_key` in `~/.grepai/workspace.yaml`; use `api_key: unused` for a local server without authentication:
+
+```yaml
+workspaces:
+  my-workspace:
+    embedder:
+      provider: openai
+      model: text-embedding-3-small
+      endpoint: https://your-resource.openai.azure.com/openai/v1
+      api_key: your-key
+```
+
+### RPG in Workspaces
+
+Before grepai v1.2.0, RPG symbol↔chunk links were empty in workspace mode, and with the Qdrant backend (workspace or single project) all chunks formed a single RPG node. After upgrading, the next `grepai index --workspace <name>` or `grepai watch --workspace <name>` repairs them, without re-embedding; no manual cleanup is needed.
 
 ## MCP with Workspaces
 
-Use workspaces with MCP servers:
+Start the MCP server with `--workspace` so every tool with a `workspace` parameter defaults to it. No local `.grepai/` is needed in this mode:
 
 ```json
 {
@@ -255,13 +192,14 @@ Use workspaces with MCP servers:
 }
 ```
 
+Without `--workspace`, agents pass `workspace` (and optionally `projects`) explicitly; `grepai_list_workspaces` and `grepai_list_projects` help them discover valid names.
+
 ## Use Cases
 
 ### Monorepo
 
 ```bash
-# Full monorepo
-grepai workspace create monorepo
+grepai workspace create monorepo --yes
 grepai workspace add monorepo /path/to/monorepo/apps/web
 grepai workspace add monorepo /path/to/monorepo/apps/mobile
 grepai workspace add monorepo /path/to/monorepo/packages/ui
@@ -271,8 +209,7 @@ grepai workspace add monorepo /path/to/monorepo/packages/core
 ### Microservices
 
 ```bash
-# Related microservices
-grepai workspace create services
+grepai workspace create services --yes
 grepai workspace add services /path/to/user-service
 grepai workspace add services /path/to/order-service
 grepai workspace add services /path/to/payment-service
@@ -282,8 +219,7 @@ grepai workspace add services /path/to/notification-service
 ### Frontend + Backend
 
 ```bash
-# Full stack
-grepai workspace create fullstack
+grepai workspace create fullstack --yes
 grepai workspace add fullstack /path/to/frontend
 grepai workspace add fullstack /path/to/backend
 grepai workspace add fullstack /path/to/shared-types
@@ -316,18 +252,21 @@ grepai trace callers --workspace fullstack "validateToken"
 2. **Group related projects:** Only projects that you'd search together
 3. **One daemon per workspace:** Run `grepai watch --workspace`
 4. **Use project filter:** When you know which project to search
-5. **Update after major changes:** Re-index after adding/removing files
+5. **Index in CI:** `grepai index --workspace` fails loudly instead of leaving a partial index
 
 ## Common Issues
 
 ❌ **Problem:** Workspace not found
 ✅ **Solution:** Check workspace exists: `grepai workspace list`
 
+❌ **Problem:** Workspace refuses the GOB backend
+✅ **Solution:** Use PostgreSQL or Qdrant (`--backend qdrant`)
+
 ❌ **Problem:** Project paths changed
-✅ **Solution:** Remove old path, add new path:
+✅ **Solution:** Remove the project by name, then add the new path:
 ```bash
-grepai workspace remove my-workspace /old/path
-grepai workspace add my-workspace /new/path
+grepai workspace remove my-workspace frontend
+grepai workspace add my-workspace /new/path/frontend
 ```
 
 ❌ **Problem:** Search returns mixed results
@@ -335,6 +274,9 @@ grepai workspace add my-workspace /new/path
 ```bash
 grepai search --workspace ws --project backend "query"
 ```
+
+❌ **Problem:** `API keys from the environment ... are only sent to the official endpoint`
+✅ **Solution:** Set `embedder.api_key` for this workspace in `~/.grepai/workspace.yaml` (see above)
 
 ## Output Format
 
@@ -344,17 +286,14 @@ Workspace overview:
 📁 Workspace: my-workspace
 
 Configuration:
-- Location: ~/.grepai/workspaces/my-workspace/
-- Created: 2025-01-28
+- File: ~/.grepai/workspace.yaml
+- Store: qdrant (collection workspace_my-workspace)
+- Embedder: ollama (nomic-embed-text)
 
 Projects (3):
-┌─────────────┬──────────────────────────┬───────┐
-│ Name        │ Path                      │ Files │
-├─────────────┼──────────────────────────┼───────┤
-│ frontend    │ /path/to/frontend        │ 450   │
-│ backend     │ /path/to/backend         │ 320   │
-│ shared-lib  │ /path/to/shared-lib      │ 85    │
-└─────────────┴──────────────────────────┴───────┘
+- frontend    /path/to/frontend
+- backend     /path/to/backend
+- shared-lib  /path/to/shared-lib
 
 Commands:
 - Index: grepai watch --workspace my-workspace

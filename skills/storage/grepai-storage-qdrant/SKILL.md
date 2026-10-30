@@ -118,13 +118,10 @@ store:
     endpoint: your-cluster.aws.cloud.qdrant.io
     port: 6334
     use_tls: true
-    api_key: ${QDRANT_API_KEY}
+    api_key: your-api-key
 ```
 
-Set the environment variable:
-```bash
-export QDRANT_API_KEY="your-api-key"
-```
+grepai does not substitute `${VAR}` in `config.yaml` and does not read a Qdrant key from the environment: the key goes in `api_key`. Keep a config holding it out of version control.
 
 ## Configuration Options
 
@@ -133,7 +130,41 @@ export QDRANT_API_KEY="your-api-key"
 | `endpoint` | `localhost` | Qdrant server hostname |
 | `port` | `6334` | gRPC port |
 | `use_tls` | `false` | Enable TLS encryption |
+| `collection` | project path | Collection name. If empty, the absolute project path with `/`, `\` and `:` replaced by `_` (`workspace_<name>` for a workspace) |
 | `api_key` | none | Authentication key |
+
+### Sharing a Collection
+
+Set `collection` explicitly to let several projects or machines use the same collection:
+
+```yaml
+store:
+  backend: qdrant
+  qdrant:
+    endpoint: qdrant.company.com
+    port: 6334
+    use_tls: true
+    collection: team-code
+```
+
+Each point then carries a `project_namespace` payload field (also part of the point ID), and every search, listing, stats count and deletion only sees the current repository:
+
+- **Same repository, shared index:** the namespace is the normalized `origin` remote URL (`git@github.com:org/app.git`, `ssh://git@github.com/org/app` and `https://github.com/org/app` all match; credentials in the URL are dropped). Clones on other machines, CI, colleagues and linked worktrees share the same points. Checkouts on different branches still overwrite each other's version of a file.
+- **Different repositories, isolated:** they never see or change each other's points, even with identical file paths. A project in a subdirectory adds it to the namespace (`github.com/org/app#services/api`).
+- **No git repository, no `origin`, or a local-path `origin`:** the namespace is the project's absolute path.
+- **Changing the `origin` URL** changes the namespace: the next `grepai index` or `grepai watch` re-indexes from scratch, and the old points stay until you delete them.
+
+Default collections (no `collection` key) and workspace collections hold a single project and have no namespace: nothing changes for them.
+
+**Upgrading with an explicit `collection`:** `grepai search`, `grepai status` and the MCP tools keep reading the existing points until the project is re-indexed. The first `grepai index` or `grepai watch` migrates it, reusing the stored vectors for unchanged chunks (no new embedding cost). grepai warns at startup while old points remain. Once every project sharing the collection has been upgraded and re-indexed, delete the leftover points without a namespace:
+
+```bash
+curl -X POST http://localhost:6333/collections/<collection>/points/delete \
+  -H 'Content-Type: application/json' \
+  -d '{"filter": {"must": [{"is_empty": {"key": "project_namespace"}}]}}'
+```
+
+**Upgrade every project that shares the collection:** an earlier grepai release ignores the namespace and can still overwrite or delete the other projects' points.
 
 ## Verifying Setup
 
@@ -153,7 +184,7 @@ curl http://localhost:6333/health
 curl http://localhost:6333/collections
 
 # Get collection info
-curl http://localhost:6333/collections/grepai
+curl http://localhost:6333/collections/<collection>
 ```
 
 ### From GrepAI
@@ -222,10 +253,11 @@ docker run -d \
 
 ### Collection Settings
 
-GrepAI creates a collection named `grepai` with:
+When the collection does not exist, GrepAI creates it (named after the project path, or `collection` if set) with:
 - Vector size: matches your embedding dimensions
 - Distance: Cosine similarity
-- On-disk storage for large datasets
+
+An existing collection is never resized: after changing to a model with other dimensions, delete the collection or set a new `collection` name, then re-index.
 
 ## Clustering (Advanced)
 
@@ -245,14 +277,14 @@ cluster:
 
 ```bash
 # Create snapshot via REST API
-curl -X POST 'http://localhost:6333/collections/grepai/snapshots'
+curl -X POST 'http://localhost:6333/collections/<collection>/snapshots'
 ```
 
 ### Restore Snapshot
 
 ```bash
 # Restore from snapshot
-curl -X PUT 'http://localhost:6333/collections/grepai/snapshots/recover' \
+curl -X PUT 'http://localhost:6333/collections/<collection>/snapshots/recover' \
   -H 'Content-Type: application/json' \
   -d '{"location": "/path/to/snapshot"}'
 ```
@@ -305,10 +337,13 @@ docker run -p 6334:6334 ...
 ```
 
 ❌ **Problem:** Authentication failed
-✅ **Solution:** Check API key:
-```bash
-echo $QDRANT_API_KEY
-```
+✅ **Solution:** Check `store.qdrant.api_key` in the config (it is not read from the environment)
+
+❌ **Problem:** Hybrid search (`search.hybrid.enabled: true`) returns a single result
+✅ **Solution:** Bug in grepai v0.18.0 up to 1.1.0, fixed in grepai v1.2.0. Upgrade with `grepai update`; no re-index needed. Hybrid search works normally with Qdrant from that version.
+
+❌ **Problem:** Another repository's files show up, or disappear, in a shared collection
+✅ **Solution:** A project sharing the collection still runs a grepai version older than v1.2.0. Upgrade every project, then run `grepai index` in each (see [Sharing a Collection](#sharing-a-collection)).
 
 ❌ **Problem:** Out of memory
 ✅ **Solutions:**
@@ -336,7 +371,7 @@ echo $QDRANT_API_KEY
 
 1. **Use persistent volume:** Mount `/qdrant/storage`
 2. **Enable TLS in production:** Set `use_tls: true`
-3. **Secure API key:** Use environment variables
+3. **Secure API key:** Never commit a config holding `api_key`
 4. **Monitor memory:** Vector search is memory-intensive
 5. **Regular snapshots:** Backup before major changes
 

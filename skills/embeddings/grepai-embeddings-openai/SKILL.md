@@ -41,7 +41,6 @@ Get your API key at: https://platform.openai.com/api-keys
 embedder:
   provider: openai
   model: text-embedding-3-small
-  api_key: ${OPENAI_API_KEY}
 ```
 
 Set the environment variable:
@@ -50,13 +49,16 @@ Set the environment variable:
 export OPENAI_API_KEY="sk-..."
 ```
 
+With no `api_key` and no `endpoint`, grepai uses the official endpoint (`https://api.openai.com/v1`) and reads `OPENAI_API_KEY` from the environment.
+
+> **Note:** grepai does not expand variables in `config.yaml`. `api_key: ${OPENAI_API_KEY}` is sent as the literal string `${OPENAI_API_KEY}`; leave `api_key` out to use the environment variable.
+
 ### With Parallel Processing
 
 ```yaml
 embedder:
   provider: openai
   model: text-embedding-3-small
-  api_key: ${OPENAI_API_KEY}
   parallelism: 8  # Concurrent requests for speed
 ```
 
@@ -148,7 +150,6 @@ GrepAI v0.24.0+ supports adaptive rate limiting and parallel requests:
 embedder:
   provider: openai
   model: text-embedding-3-small
-  api_key: ${OPENAI_API_KEY}
   parallelism: 8  # Adjust based on your rate limit tier
 ```
 
@@ -190,35 +191,44 @@ $env:OPENAI_API_KEY = "sk-..."
 [System.Environment]::SetEnvironmentVariable('OPENAI_API_KEY', 'sk-...', 'User')
 ```
 
-### Using .env Files
+grepai does not read `.env` files: the variable must be exported in the shell (or in the `env` block of your MCP client config) that starts grepai.
 
-Create `.env` in your project root:
+### Environment Keys Only Go to the Official Endpoint
 
-```
-OPENAI_API_KEY=sk-...
-```
+Since grepai v1.2.0, a key read from the environment is sent only to `https://api.openai.com`. With any other `endpoint` (Azure, LiteLLM, vLLM, a proxy…), set `embedder.api_key` in `.grepai/config.yaml` (or `~/.grepai/workspace.yaml` for a workspace). If `api_key` is empty while `OPENAI_API_KEY` is exported, grepai stops with an error naming the variable and the endpoint, instead of sending the key.
 
-Add to `.gitignore`:
-```gitignore
-.env
-```
+This protects you from a `.grepai/config.yaml` committed in a cloned repository that points `endpoint` at a server controlled by someone else.
 
 ## Azure OpenAI
 
-For Azure-hosted OpenAI:
+For Azure-hosted OpenAI (or any OpenAI-compatible API):
 
 ```yaml
 embedder:
   provider: openai
   model: your-deployment-name
-  api_key: ${AZURE_OPENAI_API_KEY}
-  endpoint: https://your-resource.openai.azure.com
+  endpoint: https://your-resource.openai.azure.com/openai/v1
+  api_key: your-azure-key  # required: OPENAI_API_KEY is never sent to a custom endpoint
+```
+
+grepai sends `POST {endpoint}/embeddings` with an `Authorization: Bearer` header. Keep a config holding a key out of version control.
+
+### Local OpenAI-Compatible Servers (vLLM, TEI…)
+
+The `openai` provider always requires a non-empty key, so a server that needs no authentication still needs a placeholder. Without one, grepai stops with `OpenAI API key not set` (no variable exported) or with the custom endpoint error (`OPENAI_API_KEY` exported):
+
+```yaml
+embedder:
+  provider: openai
+  model: your-model
+  endpoint: http://localhost:8000/v1
+  api_key: unused
 ```
 
 ## Security Best Practices
 
-1. **Use environment variables:** Never hardcode API keys
-2. **Add to .gitignore:** Exclude `.env` files
+1. **Use environment variables with the official endpoint:** Never hardcode API keys for `api.openai.com`
+2. **Custom endpoints:** The key must be in `api_key`; never commit that config
 3. **Rotate keys:** Regularly rotate API keys
 4. **Monitor usage:** Check OpenAI dashboard for unexpected usage
 5. **Review code:** Ensure sensitive code isn't being indexed
@@ -230,6 +240,9 @@ embedder:
 ```bash
 echo $OPENAI_API_KEY
 ```
+
+❌ **Problem:** `API keys from the environment (OPENAI_API_KEY) are only sent to the official endpoint ... not to the custom endpoint ...`
+✅ **Solution:** You use a custom `endpoint`. Set `embedder.api_key` in the config (`api_key: unused` for a server without authentication).
 
 ❌ **Problem:** `429 Rate limit exceeded`
 ✅ **Solution:** Reduce parallelism or upgrade OpenAI tier:
@@ -261,7 +274,6 @@ embedder:
 embedder:
   provider: openai
   model: text-embedding-3-small
-  api_key: ${OPENAI_API_KEY}
 ```
 
 2. Delete existing index:

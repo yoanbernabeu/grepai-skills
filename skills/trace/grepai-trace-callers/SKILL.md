@@ -141,32 +141,9 @@ callers[3]:
 
 > **Note:** `--json` and `--toon` are mutually exclusive.
 
-## Extraction Modes
+## Extraction Mode
 
-GrepAI offers two extraction modes:
-
-### Fast Mode (Default)
-
-Uses regex patterns. Fast and dependency-free.
-
-```bash
-grepai trace callers "Login" --mode fast
-```
-
-### Precise Mode
-
-Uses tree-sitter AST parsing. More accurate but requires tree-sitter.
-
-```bash
-grepai trace callers "Login" --mode precise
-```
-
-### Comparison
-
-| Mode | Speed | Accuracy | Dependencies |
-|------|-------|----------|--------------|
-| `fast` | ⚡⚡⚡ | Good | None |
-| `precise` | ⚡⚡ | Excellent | tree-sitter |
+Symbols and calls are always extracted with regular expressions (the "fast" extractor used by `grepai watch` and `grepai index`); output reports `"mode": "fast"`. The `--mode` flag is deprecated since grepai 1.0.0: it is still accepted for existing scripts, prints a deprecation warning and changes nothing. Do not pass `--mode precise`.
 
 ## Configuration
 
@@ -174,8 +151,6 @@ Configure trace in `.grepai/config.yaml`:
 
 ```yaml
 trace:
-  mode: fast  # fast or precise
-
   enabled_languages:
     - .go
     - .js
@@ -183,11 +158,9 @@ trace:
     - .py
     - .php
     - .rs
-
-  exclude_patterns:
-    - "*_test.go"
-    - "*.spec.ts"
 ```
+
+To keep files (tests, generated code) out of the symbol index, use the top-level `ignore` list. `trace.mode` and `trace.exclude_patterns` never had any effect and were removed in grepai 1.0.0.
 
 ## Supported Languages
 
@@ -196,14 +169,21 @@ trace:
 | Go | `.go` |
 | JavaScript | `.js`, `.jsx` |
 | TypeScript | `.ts`, `.tsx` |
+| Vue SFC | `.vue` |
 | Python | `.py` |
 | PHP | `.php` |
-| C/C++ | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx` |
+| Lua | `.lua` |
+| Java | `.java` |
+| C/C++ | `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx` |
 | Rust | `.rs` |
 | Zig | `.zig` |
 | C# | `.cs` |
-| Java | `.java` |
+| F# | `.fs`, `.fsx`, `.fsi` |
 | Pascal/Delphi | `.pas`, `.dpr` |
+| Ruby | `.rb` |
+| GDScript | `.gd` |
+
+A config created by an older version may lack newer extensions (`.vue`, `.lua`, `.java`, F#, `.rb`, `.gd`): add them to `trace.enabled_languages` by hand.
 
 ## Use Cases
 
@@ -308,6 +288,19 @@ for r in data['results']:
     print(f"  - {r['caller']} in {r['file']}:{r['line']}")
 ```
 
+### Same-Name Definitions
+
+When several functions share the name you trace (methods of different classes, functions in different files), grepai picks the definition deterministically: first by file path, then by line. The CLI and the MCP tools make the same choice, and it no longer depends on the order in which files were indexed.
+
+Pass the bare name: `Class::method` or other qualified names are not supported.
+
+```bash
+grepai trace callers "save"        # ✅
+grepai trace callers "User::save"  # ❌ not supported
+```
+
+Each caller is resolved in the file (and at the declaration line) where its call was found, so two same-name callers in one file are reported separately.
+
 ## Common Issues
 
 ❌ **Problem:** No callers found
@@ -319,13 +312,14 @@ for r in data['results']:
 ❌ **Problem:** Too many false positives
 ✅ **Solutions:**
 - Use more specific function name
-- Add exclude patterns in config
+- Add test or generated paths to the top-level `ignore` list
 - Filter results with `jq`
 
 ❌ **Problem:** Missing some callers
 ✅ **Solutions:**
-- Try `--mode precise` for better accuracy
 - Check if files are in ignore patterns
+- Check the extension is in `trace.enabled_languages`
+- Dynamic calls (callbacks, reflection) are not detected by the regex extractor
 
 ## Best Practices
 
@@ -360,5 +354,4 @@ Found 3 callers:
    Context: err := auth.Login(username, password)
 
 Tip: Use --json for machine-readable output
-     Use --mode precise for more accurate results
 ```

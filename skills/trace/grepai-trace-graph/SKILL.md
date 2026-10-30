@@ -214,15 +214,9 @@ grepai trace graph "main" --depth 2 --toon
 
 > **Note:** `--json` and `--toon` are mutually exclusive.
 
-## Extraction Modes
+## Extraction Mode
 
-```bash
-# Fast mode (regex-based)
-grepai trace graph "main" --mode fast
-
-# Precise mode (tree-sitter AST)
-grepai trace graph "main" --mode precise
-```
+Symbols and calls are always extracted with regular expressions (the "fast" extractor used by `grepai watch` and `grepai index`); output reports `"mode": "fast"`. The `--mode` flag is deprecated since grepai 1.0.0: it is still accepted for existing scripts, prints a deprecation warning and changes nothing. Do not pass `--mode precise`.
 
 ## Use Cases
 
@@ -381,20 +375,24 @@ echo "Before: $(grepai trace graph 'main' --depth 3 --json | jq '.stats.nodes') 
 echo "After: $(grepai trace graph 'main' --depth 3 --json | jq '.stats.nodes') nodes"
 ```
 
+## What the Graph Contains
+
+- Edges are real calls: property reads and writes are neither shown nor followed, and a declaration line is not an edge to itself.
+- The root and same-name nodes are resolved deterministically (file path, then line), the same way in the CLI and in `grepai_trace_graph` (MCP).
+- Pass a bare function name: `Class::method` is not supported.
+
 ## Common Issues
 
 ❌ **Problem:** Graph too large / timeout
 ✅ **Solutions:**
 - Reduce depth: `--depth 2`
 - Trace specific function instead of `main`
-- Use `--mode fast`
 
 ❌ **Problem:** Many cycles detected
 ✅ **Solution:** This indicates circular dependencies in code. Consider refactoring.
 
 ❌ **Problem:** Missing branches
 ✅ **Solutions:**
-- Try `--mode precise`
 - Check if files are indexed
 - Verify language is enabled
 
