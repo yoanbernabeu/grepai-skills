@@ -395,13 +395,109 @@ echo $OPENAI_API_KEY
 export OPENAI_API_KEY="sk-..."
 ```
 
-3. Check key format in config:
+3. Check key format in config. grepai does not substitute `${VAR}`: `api_key: ${OPENAI_API_KEY}` is sent literally. Remove the line to use the environment variable:
 ```yaml
 embedder:
-  api_key: ${OPENAI_API_KEY}  # Uses env var
+  provider: openai
+  model: text-embedding-3-small
+  # no api_key: OPENAI_API_KEY is read from the environment
 ```
 
 ---
+
+### Issue: "API keys from the environment ... are only sent to the official endpoint"
+
+**Symptom:**
+```
+API keys from the environment (OPENAI_API_KEY) are only sent to the official endpoint https://api.openai.com/v1, not to the custom endpoint https://...: set embedder.api_key in the grepai config to use a key with this endpoint
+```
+
+**Cause:** `embedder.endpoint` is not the provider's official host over HTTPS (`api.openai.com`, `openrouter.ai`, `api.synthetic.new`, `router.requesty.ai`), and `embedder.api_key` is empty. grepai never sends an environment key (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `SYNTHETIC_API_KEY`, `REQUESTY_API_KEY`) to another endpoint, because a `.grepai/config.yaml` committed in a cloned repository could redirect it.
+
+**Solutions:**
+
+1. Azure, LiteLLM, vLLM, a proxy: put the key in the config (`.grepai/config.yaml` or `~/.grepai/workspace.yaml`), and keep that file out of version control:
+```yaml
+embedder:
+  provider: openai
+  endpoint: https://your-resource.openai.azure.com/openai/v1
+  api_key: your-key
+```
+
+2. Local server without authentication (through the `openai` provider): the provider always needs a non-empty key, so use a placeholder:
+```yaml
+embedder:
+  api_key: unused
+```
+
+3. Using the official API: remove `endpoint` (empty keeps the official endpoint).
+
+`ollama` and `lmstudio` providers use no key and are not affected.
+
+---
+
+### Issue: "framework_processing.node_path ... use \"node\" or an absolute path outside the project"
+
+**Symptom:** A warning at `index` or `watch` time (only while Vue processing is enabled), for example:
+```
+Warning: framework_processing.node_path "./node_modules/.bin/node" is a relative path: use "node" or an absolute path outside the project; using "node" instead
+```
+
+**Cause:** `node_path` only accepts a Node.js command name resolved through `PATH` (`node`, `nodejs`, `node20`, `node.exe`) or a local absolute path outside the project and its git repository. A relative path, a path inside the project or its repository (also through symlinks), a missing path, a `/proc` or `/dev` path or a network path is ignored, and grepai uses `node` from `PATH`.
+
+**Solution:** Remove `node_path` (default `node`), or set an absolute path outside the project:
+```yaml
+framework_processing:
+  node_path: /usr/local/bin/node
+```
+
+**Untrusted repositories:** compiling `.vue` files loads `@vue/compiler-sfc` from the project's `node_modules`. Only run grepai on repositories you trust, or disable Vue processing:
+```yaml
+framework_processing:
+  frameworks:
+    vue:
+      enabled: false
+```
+
+---
+
+### Issue: "watcher is already running"
+
+**Symptom:**
+```
+watcher is already running in background (PID 12345)
+Use 'grepai watch --stop' to stop it
+```
+
+If two starts race, the second one fails with `another grepai watch process is starting (lock held)` (`another grepai worktree watch process is starting (lock held)` in a linked worktree).
+
+**Cause:** Only one watch daemon can run per project or worktree: the PID lock is held for the daemon's whole lifetime.
+
+**Solution:** Use the running daemon, or stop it first:
+```bash
+grepai watch --status
+grepai watch --stop
+```
+
+An empty `*.pid.lock` file stays in the log directory after a stop. This is normal; do not delete it while a daemon runs.
+
+---
+
+### Issue: Qdrant hybrid search returns a single result
+
+**Symptom:** With `store.backend: qdrant` and `search.hybrid.enabled: true`, every search returns only one result.
+
+**Cause:** Bug present since v0.18.0, fixed in grepai v1.2.0.
+
+**Solution:** Upgrade grepai (`grepai update`). No re-index is needed. Results with hybrid search disabled are unchanged.
+
+---
+
+### Issue: Empty RPG links in a workspace, or a single RPG node with Qdrant
+
+**Symptom:** In workspace mode, RPG symbols are not linked to chunks; or with Qdrant and RPG, all chunks end up in one node.
+
+**Solution:** Fixed in grepai v1.2.0. Upgrade, then run `grepai index` (or let `grepai watch` run): the links are repaired on the next indexing, without re-embedding.
 
 ## Diagnostic Commands
 

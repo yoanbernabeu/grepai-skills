@@ -51,8 +51,12 @@ embedder:
   # text-embedding-3-large: 3072
   dimensions: 768
 
-  # API key (for OpenAI, supports env vars)
-  api_key: ${OPENAI_API_KEY}
+  # API key (cloud providers). Literal value: no ${VAR} substitution.
+  # If empty, grepai reads OPENAI_API_KEY (or OPENROUTER_API_KEY,
+  # SYNTHETIC_API_KEY, REQUESTY_API_KEY), but only when endpoint is
+  # empty or the provider's official HTTPS host. A custom endpoint
+  # (Azure, LiteLLM, vLLM, proxy...) requires api_key here.
+  # api_key: ""
 
   # Parallel requests (OpenAI only, for speed)
   parallelism: 4
@@ -75,6 +79,26 @@ store:
     port: 6334
     use_tls: false
     api_key: your-qdrant-api-key  # Optional
+    # collection: shared-index   # Optional; default derived from the project path.
+    # When set, points carry a project_namespace (git origin URL), so
+    # clones of one repo share the index and other repos stay isolated.
+
+# ═══════════════════════════════════════════════════════════════
+# FRAMEWORK PROCESSING
+# Pre-processing of single-file components (.vue)
+# ═══════════════════════════════════════════════════════════════
+framework_processing:
+  enabled: true
+  mode: auto            # auto | require | off
+  # Node.js command name (node, nodejs, node20, node.exe) or an
+  # absolute path outside the project and its git repository.
+  # Anything else: warning, then fallback to `node` from PATH.
+  node_path: node
+  frameworks:
+    vue:
+      # Loads @vue/compiler-sfc from the project's node_modules:
+      # disable on repositories you do not trust.
+      enabled: true
 
 # ═══════════════════════════════════════════════════════════════
 # CHUNKING CONFIGURATION
@@ -103,37 +127,37 @@ watch:
 # Call graph analysis settings
 # ═══════════════════════════════════════════════════════════════
 trace:
-  # Extraction mode: fast | precise
-  # fast: Uses regex, no dependencies, faster
-  # precise: Uses tree-sitter AST parsing, more accurate
-  mode: fast
-
-  # Languages to analyze for call graphs
+  # Languages to analyze for call graphs (regex extraction).
+  # trace.mode and trace.exclude_patterns were removed in 1.0.0:
+  # use the top-level ignore list to exclude files.
   enabled_languages:
     - .go
     - .js
     - .ts
     - .jsx
     - .tsx
+    - .vue
     - .py
     - .php
+    - .lua
+    - .gd
+    - .rb
     - .c
     - .h
     - .cpp
     - .hpp
     - .cc
     - .cxx
+    - .hxx
     - .rs
     - .zig
     - .cs
+    - .java
+    - .fs
+    - .fsx
+    - .fsi
     - .pas
     - .dpr
-
-  # Patterns to exclude from trace analysis
-  exclude_patterns:
-    - "*_test.go"
-    - "*.spec.ts"
-    - "*.test.js"
 
 # ═══════════════════════════════════════════════════════════════
 # SEARCH CONFIGURATION
@@ -252,8 +276,7 @@ chunking:
 version: 1
 embedder:
   provider: openai
-  model: text-embedding-3-small
-  api_key: ${OPENAI_API_KEY}
+  model: text-embedding-3-small  # key from OPENAI_API_KEY
   parallelism: 8
 store:
   backend: qdrant
@@ -277,23 +300,26 @@ store:
 
 ## Environment Variables
 
-GrepAI supports environment variable substitution:
+GrepAI does **not** substitute `${VAR}` in `config.yaml`: values are used literally. The only variables it reads are the embedder API keys, when `embedder.api_key` is empty:
 
-```yaml
-embedder:
-  api_key: ${OPENAI_API_KEY}
-
-store:
-  postgres:
-    dsn: ${DATABASE_URL}
-```
-
-Set in your shell:
+| Provider | Variables | Official endpoint |
+|----------|-----------|-------------------|
+| `openai` | `OPENAI_API_KEY` | `https://api.openai.com` |
+| `openrouter` | `OPENROUTER_API_KEY`, then `OPENAI_API_KEY` | `https://openrouter.ai` |
+| `synthetic` | `SYNTHETIC_API_KEY`, then `OPENAI_API_KEY` | `https://api.synthetic.new` |
+| `requesty` | `REQUESTY_API_KEY`, then `OPENAI_API_KEY` | `https://router.requesty.ai` |
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-export DATABASE_URL="postgres://..."
 ```
+
+An environment key is only sent when `endpoint` is empty or the provider's official host over HTTPS. A `.grepai/config.yaml` can come with a cloned repository, so its `endpoint` is not trusted with your keys:
+
+- **Custom endpoint** (Azure, LiteLLM, vLLM, a proxy, a local server through the `openai` provider): set `embedder.api_key` in `.grepai/config.yaml` or `~/.grepai/workspace.yaml`. Otherwise grepai stops with an error naming the variable and the endpoint.
+- **Keyless local server** through the `openai` provider: the provider always needs a non-empty key, so use a placeholder, `api_key: unused`.
+- `ollama` and `lmstudio` use no key and are not affected.
+
+Postgres DSNs and Qdrant API keys are read from the config only.
 
 ## Validating Configuration
 
@@ -316,8 +342,9 @@ If there are config errors, they'll be displayed.
 1. **Start simple:** Use defaults, optimize later
 2. **Match chunking to code style:** Larger chunks for verbose code
 3. **Use boosting:** Penalize test/vendor, boost src/lib
-4. **Secure API keys:** Use environment variables, never commit
-5. **Exclude noise:** Ignore generated files, dependencies
+4. **Secure API keys:** Use environment variables with official endpoints; never commit a config holding `api_key`
+5. **Untrusted repositories:** A committed `.grepai/config.yaml` is input you did not write. Set `framework_processing.frameworks.vue.enabled: false` before indexing a repository you do not trust
+6. **Exclude noise:** Ignore generated files, dependencies
 
 ## Output Format
 
@@ -329,8 +356,7 @@ Valid configuration status:
    Embedder: ollama (nomic-embed-text)
    Storage: gob (.grepai/index.gob)
    Chunking: 512 tokens, 50 overlap
-   Trace mode: fast
-   Languages: 18 enabled
+   Languages: 27 enabled
    Ignore patterns: 12 configured
    Boosting: enabled
 ```

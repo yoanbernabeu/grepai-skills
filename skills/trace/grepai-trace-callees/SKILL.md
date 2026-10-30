@@ -143,24 +143,9 @@ grepai trace callees "ProcessOrder" --toon
 
 > **Note:** `--json` and `--toon` are mutually exclusive.
 
-## Extraction Modes
+## Extraction Mode
 
-### Fast Mode (Default)
-
-```bash
-grepai trace callees "ProcessOrder" --mode fast
-```
-
-### Precise Mode
-
-```bash
-grepai trace callees "ProcessOrder" --mode precise
-```
-
-| Mode | Speed | Accuracy | Dependencies |
-|------|-------|----------|--------------|
-| `fast` | ⚡⚡⚡ | Good | None |
-| `precise` | ⚡⚡ | Excellent | tree-sitter |
+Symbols and calls are always extracted with regular expressions (the "fast" extractor used by `grepai watch` and `grepai index`); output reports `"mode": "fast"`. The `--mode` flag is deprecated since grepai 1.0.0: it is still accepted for existing scripts, prints a deprecation warning and changes nothing. Do not pass `--mode precise`.
 
 ## Use Cases
 
@@ -286,6 +271,27 @@ func process(fn func()) {
 }
 ```
 
+### What Counts as a Callee
+
+Since grepai v1.2.0, callees only list real calls:
+
+- The function's own declaration line is not reported as a call to itself.
+- Property reads and writes (`order.total`, `this.items = []`) are not callees.
+- Two different calls on the same line are both listed (`save(normalize(x))` gives `save` and `normalize`).
+
+### Same-Name Definitions
+
+When several functions share the name you trace (methods of different classes, functions in different files), grepai picks the definition deterministically: first by file path, then by line. The CLI and the MCP tools make the same choice, and it no longer depends on the order in which files were indexed.
+
+Pass the bare name: `Class::method` or other qualified names are not supported.
+
+```bash
+grepai trace callees "save"        # ✅
+grepai trace callees "User::save"  # ❌ not supported
+```
+
+Callees of all same-name definitions stay merged into one list: tracing `save` when `User.save` and `Order.save` both exist returns the calls made by both.
+
 ## Combining with Trace Graph
 
 For recursive dependency analysis, use trace graph:
@@ -333,12 +339,11 @@ done
 
 ❌ **Problem:** No callees found (but function has calls)
 ✅ **Solutions:**
-- Try `--mode precise`
 - Check language is in `enabled_languages`
 - Ensure symbols.gob is up to date (`grepai watch`)
 
 ❌ **Problem:** Missing some callees
-✅ **Solution:** Use `--mode precise` for better accuracy
+✅ **Solution:** Dynamic calls (callbacks, reflection, interface dispatch) are not detected by the regex extractor; property reads and writes are intentionally not listed
 
 ## Best Practices
 

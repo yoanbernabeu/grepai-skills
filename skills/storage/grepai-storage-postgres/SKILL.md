@@ -84,18 +84,19 @@ store:
     dsn: postgres://user:password@localhost:5432/grepai
 ```
 
-### With Environment Variable
+### Keeping the Password Out of the Config
+
+grepai does not substitute `${VAR}` in `config.yaml`: `dsn: ${DATABASE_URL}` is used literally and fails. The DSN is passed to the pgx driver, which reads the standard libpq variables for anything the DSN leaves out, so you can drop the password from the config:
 
 ```yaml
 store:
   backend: postgres
   postgres:
-    dsn: ${DATABASE_URL}
+    dsn: postgres://user@localhost:5432/grepai
 ```
 
-Set the environment variable:
 ```bash
-export DATABASE_URL="postgres://user:password@localhost:5432/grepai"
+export PGPASSWORD="password"
 ```
 
 ### Full DSN Options

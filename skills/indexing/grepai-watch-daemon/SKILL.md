@@ -235,9 +235,17 @@ systemctl --user start grepai-watch
 
 ### Checking Logs
 
+Background daemons write their logs, PID files and PID locks to the log directory:
+
+| OS | Log directory |
+|----|---------------|
+| macOS | `~/Library/Logs/grepai/` |
+| Linux | `$XDG_STATE_HOME/grepai/logs/` (default `~/.local/state/grepai/logs/`) |
+| Windows | `%LOCALAPPDATA%\grepai\logs\` |
+
 ```bash
-# Background daemon logs
-tail -f ~/.grepai/daemon.log
+# Background daemon logs (macOS)
+tail -f ~/Library/Logs/grepai/*.log
 
 # Or with systemd
 journalctl --user -u grepai-watch -f
@@ -246,6 +254,10 @@ journalctl --user -u grepai-watch -f
 ## Multiple Projects
 
 ### One Daemon Per Project
+
+Only one watch daemon can run per project or git worktree: the daemon holds its PID lock for its whole lifetime, so a second `grepai watch` on the same project fails with `watcher is already running (PID ...)` (or `another grepai watch process is starting (lock held)` when two starts race). Search, trace and MCP processes are not affected and can run alongside the daemon.
+
+After `grepai watch --stop`, an empty `*.pid.lock` file stays in the log directory. This is expected; it is reused by the next daemon.
 
 Run separate daemons for each project:
 
